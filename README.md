@@ -37,3 +37,7 @@ Notes:
 ## Running it offline
 
 Download `index.html` and open it in any modern browser. It has no dependencies and needs no internet connection.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
