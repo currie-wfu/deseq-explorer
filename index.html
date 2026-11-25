@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DESeq2 Gene Explorer</title>
+<style>
+:root {
+  --bg: #f7f7f5; --surface: #ffffff; --text: #1d1d1f; --muted: #6b6b70; --border: #e2e2de;
+  --accent: #2f5fd0; --up: #c0392b; --down: #2463b5; --sig-bg: #fff4d6; --chip: #eef1f8; --grid: #ececea; --err: #b42318;
+  --g0: #d1495b; --g1: #3a7ca5; --g2: #5a9e57; --g3: #e08a1e; --g4: #8e5cc2; --g5: #7a7a7a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141416; --surface: #1e1e22; --text: #ececef; --muted: #9a9aa3; --border: #34343a;
+    --accent: #7aa2ff; --up: #ff8a7a; --down: #7aaaff; --sig-bg: #3a3320; --chip: #2a2d38; --grid: #2c2c31; --err: #ff8a80;
+    --g0: #ff7a8a; --g1: #6cb6e6; --g2: #86c983; --g3: #f2a94e; --g4: #b48ae6; --g5: #a8a8a8;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141416; --surface: #1e1e22; --text: #ececef; --muted: #9a9aa3; --border: #34343a;
+  --accent: #7aa2ff; --up: #ff8a7a; --down: #7aaaff; --sig-bg: #3a3320; --chip: #2a2d38; --grid: #2c2c31; --err: #ff8a80;
+  --g0: #ff7a8a; --g1: #6cb6e6; --g2: #86c983; --g3: #f2a94e; --g4: #b48ae6; --g5: #a8a8a8;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 60px; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+h2 { font-size: 15px; margin: 0; }
+.sub { color: var(--muted); margin: 0 0 18px; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+.drop { border: 2px dashed var(--border); border-radius: 10px; padding: 18px; text-align: center; color: var(--muted); transition: background .15s, border-color .15s; }
+.drop.over { border-color: var(--accent); background: var(--chip); }
+.drop .btns { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
+.condlist { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.cond { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.condhead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.condhead input.cname { font-weight: 600; width: 160px; }
+.condhead .meta { color: var(--muted); font-size: 12.5px; flex: 1; min-width: 180px; }
+.cond details { margin-top: 6px; }
+.cond summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
+.grouptbl td { padding: 3px 8px 3px 0; border: 0; text-align: left; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+.grouptbl input { width: 120px; }
+.iconbtn { padding: 3px 8px; font-size: 12.5px; }
+.searchrow { position: relative; }
+textarea { width: 100%; min-height: 64px; resize: vertical; padding: 10px 12px; font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; }
+textarea:focus, input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.suggest { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; margin-top: 4px; max-height: 260px; overflow: auto; box-shadow: 0 6px 20px rgba(0,0,0,.15); display: none; }
+.suggest div { padding: 6px 12px; cursor: pointer; font-family: ui-monospace, Menlo, monospace; }
+.suggest div.active, .suggest div:hover { background: var(--chip); }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-top: 12px; }
+.controls label { color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+input[type=number], input[type=text], select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font: inherit; }
+input[type=number] { width: 80px; }
+button { font: inherit; border-radius: 7px; border: 1px solid var(--border); background: var(--bg); color: var(--text); padding: 6px 12px; cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button:disabled { opacity: .5; cursor: default; }
+.spacer { flex: 1; }
+.hint { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
+.notice { color: var(--muted); margin: 8px 0 0; }
+.notice b { color: var(--text); }
+.err { color: var(--err); }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th { font-weight: 600; color: var(--muted); font-size: 12.5px; }
+th.grp { text-align: center; color: var(--text); border-bottom: 2px solid var(--border); }
+td.gene, th.gene { text-align: left; font-family: ui-monospace, Menlo, monospace; }
+td.gene a { color: var(--accent); text-decoration: none; }
+td.sig { background: var(--sig-bg); font-weight: 600; }
+td.na { color: var(--muted); }
+.up { color: var(--up); } .down { color: var(--down); }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 500px), 1fr)); gap: 16px; }
+.cards.wide { grid-template-columns: 1fr; }
+.card h3 { margin: 0 0 2px; font-family: ui-monospace, Menlo, monospace; font-size: 16px; }
+.card svg { width: 100%; height: auto; display: block; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); font-size: 12.5px; margin-bottom: 10px; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+.sectionhead { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 10px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>DESeq2 gene explorer</h1>
+  <p class="sub">Load one or more DESeq2 result files (CSV or TSV). Each file is one comparison. Files are read in this browser only and are never uploaded.</p>
+
+  <section class="panel">
+    <div class="sectionhead"><h2>Data</h2><span class="spacer"></span><button class="iconbtn" id="clearData" hidden>Remove all files</button></div>
+    <div class="drop" id="drop">
+      Drop result files or a folder here
+      <div class="btns">
+        <button class="primary" id="pickFiles">Open files…</button>
+        <button id="pickFolder">Open folder…</button>
+      </div>
+      <input type="file" id="fileInput" multiple accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values" hidden>
+      <input type="file" id="folderInput" webkitdirectory multiple hidden>
+    </div>
+    <div class="hint">Expected columns: a gene column (<code>gene</code>, <code>symbol</code>, <code>gene_id</code> or the first column), <code>log2FoldChange</code>, <code>padj</code>, and optionally <code>baseMean</code>, <code>pvalue</code> and per-sample normalized counts. Sample groups are guessed from the sample names (for example <code>rep1_Treated_day3</code> → Treated) and can be edited under each file.</div>
+    <div id="loadMsg"></div>
+    <div class="condlist" id="condList"></div>
+  </section>
+
+  <section class="panel" id="searchPanel">
+    <div class="searchrow">
+      <textarea id="q" placeholder="Gene names, e.g.  TP53, MYC, GAPDH   or a wildcard like  WNT*" spellcheck="false" autocomplete="off"></textarea>
+      <div class="suggest" id="suggest"></div>
+    </div>
+    <div class="controls">
+      <button class="primary" id="go">Search</button>
+      <label>Highlight if padj &lt; <input type="number" id="cut" value="0.05" step="0.01" min="0" max="1"></label>
+      <label>and |log2FC| &ge; <input type="number" id="lfcCut" value="0" step="0.25" min="0"></label>
+    </div>
+    <div class="controls">
+      <label><input type="checkbox" id="bmOn"> Hide genes with baseMean &lt; <input type="number" id="bmMin" value="10" step="1" min="0"></label>
+      <select id="bmMode" aria-label="baseMean rule"><option value="any">in any comparison</option><option value="all">in all comparisons</option></select>
+      <label>Y axis <select id="scale"><option value="lin">linear</option><option value="log">log10(count + 1)</option></select></label>
+      <span class="spacer"></span>
+      <button id="dl" disabled>Download CSV</button>
+      <button id="clear">Clear</button>
+    </div>
+    <div class="hint">Separate genes with commas, spaces or new lines. Matching ignores case. Use <code>*</code> as a wildcard (for example <code>HOX*</code>). Press Enter to search, Shift+Enter for a new line.</div>
+    <div id="notice"></div>
+  </section>
+
+  <section class="panel" id="tablePanel" hidden>
+    <div class="sectionhead"><h2>Summary</h2><span class="hint" style="margin:0">Highlighted cells pass both the padj and |log2FC| cutoffs. Group columns are mean normalized counts. The sign of log2FC follows the contrast used to make each file.</span></div>
+    <div class="tablewrap"><table id="tbl"></table></div>
+  </section>
+
+  <section id="cardPanel" hidden>
+    <div class="legend" id="legend"></div>
+    <div class="cards" id="cards"></div>
+  </section>
+</main>
+
+<script>
+/* ---------- state ---------- */
+// cond: { name, file, samples: [names], groupOf: [group name or "" to ignore], rows: { gene: [counts[], baseMean, lfc, pvalue, padj] } }
+let conds = [];
+let byUpper = new Map(), allGenes = [], groupColor = new Map();
+let current = [], shown = [], searchMsg = "";
+const PAL = ["var(--g0)", "var(--g1)", "var(--g2)", "var(--g3)", "var(--g4)", "var(--g5)"];
+
+const $ = id => document.getElementById(id);
+const q = $("q"), sug = $("suggest");
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+const tokens = s => s.split(/[\s,;]+/).map(t => t.trim()).filter(Boolean);
+const fmtP = p => p == null ? "NA" : p === 0 ? "<1e-300" : p < 0.001 ? p.toExponential(2) : p.toPrecision(3);
+const fmtN = x => x == null ? "NA" : x >= 100 ? x.toFixed(0) : x >= 10 ? x.toFixed(1) : x.toFixed(2);
+const fmtL = x => x == null ? "NA" : (x > 0 ? "+" : "") + x.toFixed(2);
+const mean = a => a.length ? a.reduce((s, v) => s + v, 0) / a.length : null;
+
+/* ---------- parsing ---------- */
+function parseDelimited(text, d) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  if (!text.includes('"')) {
+    return text.split(/\r\n|\n|\r/).filter(l => l.length).map(l => l.split(d));
+  }
+  const rows = []; let row = [], f = "", inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQ) {
+      if (ch === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else inQ = false; }
+      else f += ch;
+    } else if (ch === '"') inQ = true;
+    else if (ch === d) { row.push(f); f = ""; }
+    else if (ch === "\n" || ch === "\r") {
+      row.push(f); f = "";
+      if (row.length > 1 || row[0] !== "") rows.push(row);
+      row = [];
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+    } else f += ch;
+  }
+  if (f !== "" || row.length) { row.push(f); rows.push(row); }
+  return rows;
+}
+
+const norm = s => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+const ALIAS = {
+  bm: ["basemean"], lfc: ["log2foldchange", "log2fc", "logfc", "lfc"], se: ["lfcse"], stat: ["stat"],
+  p: ["pvalue", "pval", "p"], padj: ["padj", "fdr", "qvalue", "qval", "adjpval", "padjusted", "adjp"],
+};
+const GENE_NAMES = ["gene", "genes", "geneid", "genename", "symbol", "genesymbol", "id", "x", ""];
+const num = v => { if (v == null) return null; const t = v.trim(); if (t === "" || /^(na|nan|null|none|inf|-inf)$/i.test(t)) return null; const x = Number(t); return Number.isFinite(x) ? x : null; };
+
+function parseResultFile(name, text) {
+  const firstLine = text.slice(0, text.search(/\r|\n/) >>> 0 || text.length);
+  const d = (firstLine.split("\t").length > firstLine.split(",").length) ? "\t" : ",";
+  const rows = parseDelimited(text, d);
+  if (rows.length < 2) throw new Error("file has no data rows");
+  let head = rows[0].map(h => h.trim());
+  if (head.length === rows[1].length - 1) head = ["", ...head]; // R write.table without a rownames header
+  const H = head.map(norm);
+  const find = keys => H.findIndex(h => keys.includes(h));
+  const col = { bm: find(ALIAS.bm), lfc: find(ALIAS.lfc), se: find(ALIAS.se), stat: find(ALIAS.stat), p: find(ALIAS.p), padj: find(ALIAS.padj) };
+  if (col.lfc < 0) throw new Error("no log2FoldChange column found");
+  let gi = H.findIndex(h => GENE_NAMES.includes(h));
+  if (gi < 0 || Object.values(col).includes(gi)) gi = 0;
+  const used = new Set([gi, ...Object.values(col).filter(i => i >= 0)]);
+  // sample columns: remaining columns that are numeric in the first rows
+  const sampleIdx = [];
+  const probe = rows.slice(1, 201);
+  head.forEach((h, i) => {
+    if (used.has(i)) return;
+    let ok = 0, tot = 0;
+    for (const r of probe) { const v = r[i]; if (v == null) continue; tot++; if (num(v) != null || /^(na|nan)?$/i.test(v.trim())) ok++; }
+    if (tot && ok / tot >= 0.95) sampleIdx.push(i);
+  });
+  const samples = sampleIdx.map(i => head[i]);
+  const data = {};
+  let n = 0;
+  for (let k = 1; k < rows.length; k++) {
+    const r = rows[k], g = (r[gi] || "").trim();
+    if (!g || data[g]) continue;
+    data[g] = [sampleIdx.map(i => num(r[i]) ?? 0), col.bm >= 0 ? num(r[col.bm]) : null, num(r[col.lfc]),
+               col.p >= 0 ? num(r[col.p]) : null, col.padj >= 0 ? num(r[col.padj]) : null];
+    n++;
+  }
+  return { name, file: name, samples, groupOf: detectGroups(samples), rows: data, n, hasPadj: col.padj >= 0 };
+}
+
+// guess the experimental group of each sample from its name
+function detectGroups(names) {
+  if (!names.length) return [];
+  const toks = names.map(s => s.split(/[-_.\s]+/).filter(Boolean));
+  const isNum = s => /^\d+$/.test(s) || /^(r|rep|s)\d+$/i.test(s);
+  if (toks.every(t => t.length === toks[0].length)) {
+    let best = null;
+    for (let p = 0; p < toks[0].length; p++) {
+      const vals = toks.map(t => t[p]), uniq = [...new Set(vals)];
+      if (uniq.length < 2 || uniq.length === names.length || uniq.every(isNum)) continue;
+      if (!best || uniq.length < best.n) best = { p, n: uniq.length };
+    }
+    if (best) return toks.map(t => t[best.p]);
+  }
+  // fallback: a token that occurs in some but not all names
+  const counts = new Map();
+  toks.forEach(t => new Set(t).forEach(w => !isNum(w) && counts.set(w, (counts.get(w) || 0) + 1)));
+  const cands = [...counts].filter(([, c]) => c > 1 && c < names.length).sort((a, b) => b[1] - a[1]).map(([w]) => w);
+  if (cands.length) return toks.map(t => cands.find(w => t.includes(w)) || "other");
+  return names.map(() => "samples");
+}
+
+// strip shared prefixes/suffixes from file names so "day3_DESeq2_results.csv" → "day3"
+function cleanNames(files) {
+  let base = files.map(f => f.replace(/\.(csv|tsv|txt)$/i, ""));
+  if (base.length > 1) {
+    const sep = /[-_. ]/;
+    let suf = base[0];
+    for (const b of base) while (!b.endsWith(suf)) suf = suf.slice(1);
+    const si = suf.search(sep); suf = si >= 0 ? suf.slice(si) : "";
+    if (suf && base.every(b => b.length > suf.length)) base = base.map(b => b.slice(0, -suf.length));
+    let pre = base[0];
+    for (const b of base) while (!b.startsWith(pre)) pre = pre.slice(0, -1);
+    const m = pre.match(/^.*[-_. ]/); pre = m ? m[0] : "";
+    if (pre && base.every(b => b.length > pre.length)) base = base.map(b => b.slice(pre.length));
+  }
+  return base;
+}
+
+/* ---------- loading ---------- */
+async function loadFiles(fileList) {
+  const files = [...fileList].filter(f => /\.(csv|tsv|txt)$/i.test(f.name)).sort((a, b) => a.name.localeCompare(b.name));
+  if (!files.length) { $("loadMsg").innerHTML = `<p class="notice err">No .csv, .tsv or .txt files found.</p>`; return; }
+  $("loadMsg").innerHTML = `<p class="notice">Reading ${files.length} file${files.length > 1 ? "s" : ""}…</p>`;
+  const names = cleanNames(files.map(f => f.name));
+  const ok = [], errs = [];
+  for (let i = 0; i < files.length; i++) {
+    try {
+      const c = parseResultFile(files[i].name, await files[i].text());
+      c.name = names[i] || files[i].name;
+      if (conds.some(x => x.name === c.name)) c.name += " (" + (conds.length + ok.length + 1) + ")";
+      ok.push(c);
+    } catch (e) { errs.push(`${esc(files[i].name)}: ${esc(e.message)}`); }
+  }
+  conds.push(...ok);
+  let msg = ok.length ? `Loaded <b>${ok.length}</b> file${ok.length > 1 ? "s" : ""}. ` : "";
+  if (errs.length) msg += `<span class="err">Skipped ${errs.join("; ")}.</span>`;
+  $("loadMsg").innerHTML = `<p class="notice">${msg}</p>`;
+  dataChanged();
+}
+
+async function filesFromDrop(items) {
+  const out = [];
+  const walk = entry => new Promise(res => {
+    if (entry.isFile) entry.file(f => { out.push(f); res(); }, res);
+    else if (entry.isDirectory) {
+      const rd = entry.createReader(), all = [];
+      const next = () => rd.readEntries(async ents => {
+        if (!ents.length) { for (const e of all) await walk(e); res(); }
+        else { all.push(...ents); next(); }
+      }, res);
+      next();
+    } else res();
+  });
+  const entries = [...items].map(it => it.webkitGetAsEntry && it.webkitGetAsEntry()).filter(Boolean);
+  for (const e of entries) await walk(e);
+  return out;
+}
+
+/* ---------- persistence (this browser only) ---------- */
+function idb() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open("deseqExplorer", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("kv");
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+}
+let saveTimer;
+function saveData() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try { const db = await idb(); db.transaction("kv", "readwrite").objectStore("kv").put(conds, "conds"); } catch (e) {}
+  }, 300);
+}
+async function restoreData() {
+  try {
+    const db = await idb();
+    const v = await new Promise(res => { const r = db.transaction("kv").objectStore("kv").get("conds"); r.onsuccess = () => res(r.result); r.onerror = () => res(null); });
+    if (Array.isArray(v) && v.length) { conds = v; $("loadMsg").innerHTML = `<p class="notice">Restored <b>${v.length}</b> file${v.length > 1 ? "s" : ""} from your last session.</p>`; }
+  } catch (e) {}
+}
+
+/* ---------- data panel ---------- */
+// groups are always listed alphabetically so order and colour match across comparisons
+const byName = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+const groupNames = c => [...new Set(c.groupOf.filter(Boolean))].sort(byName);
+
+function dataChanged() {
+  byUpper = new Map();
+  for (const c of conds) for (const g of Object.keys(c.rows)) if (!byUpper.has(g.toUpperCase())) byUpper.set(g.toUpperCase(), g);
+  allGenes = [...new Set(byUpper.values())].sort();
+  groupColor = new Map();
+  [...new Set(conds.flatMap(groupNames))].sort(byName).forEach((g, i) => groupColor.set(g, PAL[i % PAL.length]));
+  renderCondList();
+  saveData();
+  if (q.value.trim()) run(); else render();
+}
+
+function renderCondList() {
+  $("clearData").hidden = !conds.length;
+  $("condList").innerHTML = conds.map((c, i) => {
+    const gs = groupNames(c);
+    const gsum = c.samples.length
+      ? gs.map(g => `<span><span class="dot" style="background:${groupColor.get(g)}"></span>${esc(g)} (${c.groupOf.filter(x => x === g).length})</span>`).join(" &nbsp;")
+      : "no per-sample counts";
+    return `<div class="cond" data-i="${i}">
+      <div class="condhead">
+        <input type="text" class="cname" value="${esc(c.name)}" aria-label="Comparison name">
+        <span class="meta">${esc(c.file)} · ${c.n.toLocaleString()} genes · ${gsum}${c.hasPadj ? "" : ' · <span class="err">no padj column</span>'}</span>
+        <button class="iconbtn" data-act="up" ${i === 0 ? "disabled" : ""} aria-label="Move up">▲</button>
+        <button class="iconbtn" data-act="down" ${i === conds.length - 1 ? "disabled" : ""} aria-label="Move down">▼</button>
+        <button class="iconbtn" data-act="rm" aria-label="Remove">✕</button>
+      </div>
+      ${c.samples.length ? `<details><summary>Edit sample groups</summary>
+        <table class="grouptbl">${c.samples.map((s, k) => `<tr><td>${esc(s)}</td><td><input type="text" data-k="${k}" value="${esc(c.groupOf[k])}" aria-label="Group for ${esc(s)}"></td></tr>`).join("")}</table>
+        <div class="hint">Samples with the same group name are plotted together. Leave a group blank to leave that column out.</div>
+      </details>` : ""}
+    </div>`;
+  }).join("");
+}
+
+$("condList").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-act]"); if (!b) return;
+  const i = +b.closest(".cond").dataset.i;
+  if (b.dataset.act === "rm") conds.splice(i, 1);
+  else { const j = b.dataset.act === "up" ? i - 1 : i + 1; [conds[i], conds[j]] = [conds[j], conds[i]]; }
+  dataChanged();
+});
+$("condList").addEventListener("change", ev => {
+  const card = ev.target.closest(".cond"); if (!card) return;
+  const c = conds[+card.dataset.i];
+  if (ev.target.classList.contains("cname")) c.name = ev.target.value.trim() || c.file;
+  else if (ev.target.dataset.k != null) c.groupOf[+ev.target.dataset.k] = ev.target.value.trim();
+  const open = card.querySelector("details")?.open;
+  dataChanged();
+  if (open) document.querySelector(`.cond[data-i="${card.dataset.i}"] details`).open = true;
+});
+$("clearData").onclick = () => {
+  if (!confirm("Remove all loaded files from this page? The files on your computer are not affected.")) return;
+  conds = []; $("loadMsg").innerHTML = ""; dataChanged();
+};
+
+/* ---------- search ---------- */
+function passes(r) {
+  const cut = parseFloat($("cut").value), lc = parseFloat($("lfcCut").value) || 0;
+  return r[4] != null && r[2] != null && r[4] < (isNaN(cut) ? 0.05 : cut) && Math.abs(r[2]) >= lc;
+}
+function lowExpr(g) {
+  if (!$("bmOn").checked) return false;
+  const min = parseFloat($("bmMin").value) || 0;
+  const low = conds.map(c => c.rows[g]).filter(r => r && r[1] != null).map(r => r[1] < min);
+  if (!low.length) return false;
+  return $("bmMode").value === "all" ? low.every(Boolean) : low.some(Boolean);
+}
+
+function resolve(input) {
+  const found = [], missing = [], seen = new Set(); let capped = null;
+  for (const t of tokens(input)) {
+    const T = t.toUpperCase();
+    if (T.includes("*") || T.includes("?")) {
+      const re = new RegExp("^" + T.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
+      const hits = allGenes.filter(g => re.test(g.toUpperCase()));
+      if (!hits.length) missing.push(t);
+      const lim = 60;
+      if (hits.length > lim) capped = { pat: t, n: hits.length, lim };
+      for (const g of hits.slice(0, lim)) if (!seen.has(g)) { seen.add(g); found.push(g); }
+    } else if (byUpper.has(T)) {
+      const g = byUpper.get(T); if (!seen.has(g)) { seen.add(g); found.push(g); }
+    } else missing.push(t);
+  }
+  return { found, missing, capped };
+}
+
+function run() {
+  hideSuggest();
+  if (!conds.length) { current = []; searchMsg = q.value.trim() ? `<span class="err">Load at least one result file first.</span>` : ""; render(); return; }
+  const { found, missing, capped } = resolve(q.value);
+  current = found;
+  let msg = "";
+  if (missing.length) msg += `Not found: <b>${missing.map(esc).join(", ")}</b>. `;
+  if (capped) msg += `"${esc(capped.pat)}" matched ${capped.n} genes; showing the first ${capped.lim}. `;
+  searchMsg = msg;
+  render();
+  try { localStorage.setItem("deseqExplorerQuery", q.value); } catch (e) {}
+}
+
+/* ---------- output ---------- */
+function render() {
+  const hidden = current.filter(lowExpr);
+  shown = current.filter(g => !hidden.includes(g));
+  let msg = "";
+  if (current.length) msg += `<b>${shown.length}</b> gene${shown.length === 1 ? "" : "s"} shown. `;
+  if (hidden.length) msg += `Hidden for baseMean &lt; ${esc($("bmMin").value)}: <b>${hidden.map(esc).join(", ")}</b>. `;
+  msg += searchMsg;
+  $("notice").innerHTML = msg ? `<p class="notice">${msg}</p>` : "";
+  $("dl").disabled = !shown.length;
+  const show = shown.length > 0 && conds.length > 0;
+  $("tablePanel").hidden = $("cardPanel").hidden = !show;
+  if (!show) return;
+
+  const colsFor = c => ["log2FC", "padj", ...(c.samples.length ? groupNames(c) : ["baseMean"])];
+  let h = `<thead><tr><th class="gene" rowspan="2">Gene</th>${conds.map(c => `<th class="grp" colspan="${colsFor(c).length}">${esc(c.name)}</th>`).join("")}</tr><tr>`;
+  for (const c of conds) h += colsFor(c).map(x => `<th>${esc(x)}</th>`).join("");
+  h += `</tr></thead><tbody>`;
+  for (const g of shown) {
+    h += `<tr><td class="gene"><a href="#card-${esc(g)}">${esc(g)}</a></td>`;
+    for (const c of conds) {
+      const r = c.rows[g], n = colsFor(c).length;
+      if (!r) { h += `<td class="na" colspan="${n}" style="text-align:center">not in results</td>`; continue; }
+      const s = passes(r), lfc = r[2];
+      h += `<td class="${s ? "sig " : ""}${lfc == null ? "na" : lfc > 0 ? "up" : "down"}">${fmtL(lfc)}</td>`
+         + `<td class="${s ? "sig" : r[4] == null ? "na" : ""}">${fmtP(r[4])}</td>`;
+      if (c.samples.length) for (const grp of groupNames(c)) h += `<td>${fmtN(mean(r[0].filter((_, k) => c.groupOf[k] === grp)))}</td>`;
+      else h += `<td>${fmtN(r[1])}</td>`;
+    }
+    h += `</tr>`;
+  }
+  $("tbl").innerHTML = h + `</tbody>`;
+
+  $("legend").innerHTML = [...groupColor].map(([g, col]) => `<span><span class="dot" style="background:${col}"></span>${esc(g)}</span>`).join("")
+    + (groupColor.size ? `<span>Bar = mean, dots = samples (normalized counts)</span>` : "");
+  $("cards").classList.toggle("wide", conds.length > 3);
+  $("cards").innerHTML = shown.map(card).join("");
+}
+
+function card(g) {
+  const log = $("scale").value === "log";
+  const nC = conds.length, pw0 = 165;
+  const L = 46, R = 8, T = 14, B = 80, W = Math.max(540, L + R + nC * pw0), H = 266;
+  const pw = (W - L - R) / nC, ph = H - T - B;
+  const anyCounts = conds.some(c => c.samples.length && c.rows[g]);
+  const tf = v => log ? Math.log10(v + 1) : v;
+  let max = 0;
+  for (const c of conds) { const r = c.rows[g]; if (r) r[0].forEach((v, k) => { if (c.groupOf[k]) max = Math.max(max, tf(v)); }); }
+  let ticks;
+  if (log) { const top = Math.max(1, Math.ceil(max)); max = top; ticks = Array.from({ length: top + 1 }, (_, i) => i); }
+  else {
+    if (max <= 0) max = 1;
+    const raw = max / 4, mag = 10 ** Math.floor(Math.log10(raw)), step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw);
+    max = Math.ceil(max / step) * step; ticks = []; for (let v = 0; v <= max + 1e-9; v += step) ticks.push(v);
+  }
+  const y = v => T + ph - (tf(v) / max) * ph;
+  const yt = t => T + ph - (t / max) * ph;
+  const logLab = t => t === 0 ? "0" : ["", "10", "100", "1k", "10k", "100k", "1M"][t] || "1e" + t;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Normalized counts for ${esc(g)}">`;
+  if (anyCounts) {
+    for (const t of ticks) {
+      const lab = log ? logLab(t) : (t >= 1000 ? (t / 1000) + "k" : String(+t.toPrecision(4)));
+      s += `<line x1="${L}" x2="${W - R}" y1="${yt(t)}" y2="${yt(t)}" stroke="var(--grid)"/>`
+         + `<text x="${L - 6}" y="${yt(t) + 4}" text-anchor="end" font-size="11" fill="var(--muted)">${lab}</text>`;
+    }
+    s += `<text transform="translate(12 ${T + ph / 2}) rotate(-90)" text-anchor="middle" font-size="11" fill="var(--muted)">normalized counts</text>`;
+  }
+  conds.forEach((c, i) => {
+    const x0 = L + i * pw, r = c.rows[g], cx = x0 + pw / 2;
+    if (i > 0) s += `<line x1="${x0}" x2="${x0}" y1="${T}" y2="${T + ph}" stroke="var(--border)"/>`;
+    s += `<text x="${cx}" y="${T + ph + 16}" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--text)">${esc(c.name.length > 22 ? c.name.slice(0, 21) + "…" : c.name)}<title>${esc(c.name)}</title></text>`;
+    if (!r) { s += `<text x="${cx}" y="${T + ph / 2}" text-anchor="middle" font-size="12" fill="var(--muted)">not in results</text>`; return; }
+    const gs = c.samples.length ? groupNames(c) : [];
+    if (!gs.length) s += `<text x="${cx}" y="${T + ph / 2}" text-anchor="middle" font-size="12" fill="var(--muted)">no sample counts</text>`;
+    const slot = pw / Math.max(gs.length, 1), bw = Math.min(32, slot * 0.6);
+    gs.forEach((grp, j) => {
+      const gx = x0 + slot * (j + 0.5), col = groupColor.get(grp);
+      const idx = c.groupOf.map((x, k) => x === grp ? k : -1).filter(k => k >= 0);
+      const vals = idx.map(k => r[0][k]), m = mean(vals);
+      s += `<rect x="${gx - bw / 2}" y="${y(m)}" width="${bw}" height="${Math.max(0, T + ph - y(m))}" fill="${col}" opacity="0.18"/>`
+         + `<line x1="${gx - bw / 2}" x2="${gx + bw / 2}" y1="${y(m)}" y2="${y(m)}" stroke="${col}" stroke-width="2.5"/>`;
+      const step = Math.min(8, (bw - 4) / Math.max(vals.length - 1, 1));
+      vals.forEach((v, k) => {
+        s += `<circle cx="${gx + (k - (vals.length - 1) / 2) * step}" cy="${y(v)}" r="4.2" fill="${col}" stroke="var(--surface)" stroke-width="1"><title>${esc(c.samples[idx[k]])}: ${v}</title></circle>`;
+      });
+    });
+    const sig = passes(r), lfc = r[2];
+    s += `<text x="${cx}" y="${T + ph + 34}" text-anchor="middle" font-size="12" fill="${lfc == null ? "var(--muted)" : lfc > 0 ? "var(--up)" : "var(--down)"}" font-weight="${sig ? 700 : 400}">log2FC ${fmtL(lfc)}</text>`
+       + `<text x="${cx}" y="${T + ph + 50}" text-anchor="middle" font-size="12" fill="${sig ? "var(--text)" : "var(--muted)"}" font-weight="${sig ? 700 : 400}">padj ${fmtP(r[4])}${sig ? " *" : ""}</text>`
+       + `<text x="${cx}" y="${T + ph + 66}" text-anchor="middle" font-size="11.5" fill="var(--muted)">baseMean ${fmtN(r[1])}</text>`;
+  });
+  return `<div class="panel card" id="card-${esc(g)}"><h3>${esc(g)}</h3>${s}</svg></div>`;
+}
+
+function csvCell(v) { v = v == null ? "NA" : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+function downloadCSV() {
+  const allS = conds.flatMap(c => c.samples), dup = new Set(allS.filter((s, i) => allS.indexOf(s) !== i));
+  const head = ["gene"];
+  for (const c of conds) head.push(...c.samples.map(s => dup.has(s) ? `${c.name}_${s}` : s), `${c.name}_baseMean`, `${c.name}_log2FoldChange`, `${c.name}_pvalue`, `${c.name}_padj`);
+  const lines = [head.map(csvCell).join(",")];
+  for (const g of shown) {
+    const row = [g];
+    for (const c of conds) {
+      const r = c.rows[g];
+      if (!r) row.push(...Array(c.samples.length + 4).fill("NA"));
+      else row.push(...r[0], r[1], r[2], r[3], r[4]);
+    }
+    lines.push(row.map(csvCell).join(","));
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
+  a.download = "deseq_explorer_selection.csv"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/* ---------- autocomplete ---------- */
+let sel = -1;
+function currentToken() {
+  const pos = q.selectionStart, v = q.value;
+  let st = pos; while (st > 0 && !/[\s,;]/.test(v[st - 1])) st--;
+  let en = pos; while (en < v.length && !/[\s,;]/.test(v[en])) en++;
+  return { st, en, tok: v.slice(st, en) };
+}
+function showSuggest() {
+  const { tok } = currentToken();
+  if (tok.length < 2 || tok.includes("*")) return hideSuggest();
+  const T = tok.toUpperCase();
+  const pre = allGenes.filter(g => g.toUpperCase().startsWith(T));
+  const inner = pre.length < 12 ? allGenes.filter(g => !g.toUpperCase().startsWith(T) && g.toUpperCase().includes(T)) : [];
+  const list = [...pre, ...inner].slice(0, 12);
+  if (!list.length || (list.length === 1 && list[0].toUpperCase() === T)) return hideSuggest();
+  sel = -1;
+  sug.innerHTML = list.map(g => `<div data-g="${esc(g)}">${esc(g)}</div>`).join("");
+  sug.style.display = "block";
+}
+function hideSuggest() { sug.style.display = "none"; sel = -1; }
+function pick(g) {
+  const { st, en } = currentToken();
+  q.value = q.value.slice(0, st) + g + ", " + q.value.slice(en).replace(/^[\s,;]+/, "");
+  const p = st + g.length + 2; q.setSelectionRange(p, p); q.focus(); hideSuggest();
+}
+
+/* ---------- wiring ---------- */
+q.addEventListener("input", showSuggest);
+q.addEventListener("keydown", ev => {
+  const items = [...sug.children], open = sug.style.display === "block";
+  if (open && (ev.key === "ArrowDown" || ev.key === "ArrowUp")) {
+    ev.preventDefault(); sel = (sel + (ev.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+    items.forEach((d, i) => d.classList.toggle("active", i === sel)); items[sel].scrollIntoView({ block: "nearest" });
+  } else if (open && (ev.key === "Tab" || (ev.key === "Enter" && sel >= 0))) {
+    ev.preventDefault(); pick(items[Math.max(sel, 0)].dataset.g);
+  } else if (ev.key === "Escape") hideSuggest();
+  else if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); run(); }
+});
+sug.addEventListener("mousedown", ev => { const d = ev.target.closest("div[data-g]"); if (d) { ev.preventDefault(); pick(d.dataset.g); } });
+q.addEventListener("blur", () => setTimeout(hideSuggest, 100));
+$("go").onclick = run;
+["cut", "lfcCut", "bmMin"].forEach(id => $(id).oninput = render);
+["bmOn", "bmMode", "scale"].forEach(id => $(id).onchange = render);
+$("dl").onclick = downloadCSV;
+$("clear").onclick = () => { q.value = ""; current = []; searchMsg = ""; render(); q.focus(); };
+
+$("pickFiles").onclick = () => $("fileInput").click();
+$("pickFolder").onclick = () => $("folderInput").click();
+$("fileInput").onchange = e => { loadFiles(e.target.files); e.target.value = ""; };
+$("folderInput").onchange = e => { loadFiles(e.target.files); e.target.value = ""; };
+const drop = $("drop");
+["dragenter", "dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", async e => {
+  const items = e.dataTransfer.items;
+  const files = items && items.length && items[0].webkitGetAsEntry ? await filesFromDrop(items) : e.dataTransfer.files;
+  loadFiles(files);
+});
+window.addEventListener("dragover", e => e.preventDefault());
+window.addEventListener("drop", e => e.preventDefault());
+
+(async () => {
+  await restoreData();
+  try { const saved = localStorage.getItem("deseqExplorerQuery"); if (saved) q.value = saved; } catch (e) {}
+  dataChanged();
+})();
+</script>
+</body>
+</html>
